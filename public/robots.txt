@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://echo-manor.netlify.app/sitemap.xml
