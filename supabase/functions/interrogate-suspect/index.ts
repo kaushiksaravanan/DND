@@ -3,7 +3,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, Accept, X-Requested-With",
+  "Access-Control-Max-Age": "86400",
 };
 
 interface InterrogationRequest {
@@ -14,9 +15,10 @@ interface InterrogationRequest {
 }
 
 Deno.serve(async (req: Request) => {
+  // Handle CORS preflight immediately
   if (req.method === "OPTIONS") {
     return new Response(null, {
-      status: 200,
+      status: 204,
       headers: corsHeaders,
     });
   }
