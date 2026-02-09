@@ -25,7 +25,7 @@ function ConfettiParticle({ delay, left }: { delay: number; left: number }) {
   );
 }
 
-export function GameResult({ isCorrect, narrative, onNewGame }: GameResultProps) {
+export function GameResult({ isCorrect, narrative, onNewGame, onViewReel, isGeneratingReel }: GameResultProps) {
   const [showContent, setShowContent] = useState(false);
   const [confetti, setConfetti] = useState<Array<{ id: number; delay: number; left: number }>>([]);
 

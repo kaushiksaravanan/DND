@@ -1,19 +1,19 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, lazy, Suspense } from 'react';
 import { supabase } from './lib/supabase';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { GameLobby } from './components/GameLobby';
 import { InvestigationInterface } from './components/InvestigationInterface';
 import { EvidenceJournal } from './components/EvidenceJournal';
-import { AccusationInterface } from './components/AccusationInterface';
-import { GameResult } from './components/GameResult';
-import { D20Dice } from './components/D20Dice';
-import { ManorMap } from './components/ManorMap';
-import { ProceduralBackground } from './components/ProceduralBackground';
-import { StoryReel } from './components/StoryReel';
 import { Game, Evidence, ChatMessage, GameState, Player, DiceRoll, generateRoomCode, StoryBeat, StoryMood } from './types/game';
 import { generateManorLayout, generateSeed, ManorLayout } from './utils/procedural';
 import { Scale, Users, Dice6, Map } from 'lucide-react';
 import { PlayerList } from './components/GameLobby';
+
+// Lazy load components that aren't needed on initial render
+const AccusationInterface = lazy(() => import('./components/AccusationInterface').then(m => ({ default: m.AccusationInterface })));
+const GameResult = lazy(() => import('./components/GameResult').then(m => ({ default: m.GameResult })));
+const D20Dice = lazy(() => import('./components/D20Dice').then(m => ({ default: m.D20Dice })));
+const StoryReel = lazy(() => import('./components/StoryReel').then(m => ({ default: m.StoryReel })));
 
 type GamePhase = 'welcome' | 'lobby' | 'playing' | 'result';
 
@@ -174,6 +174,12 @@ function App() {
         weapons: mysteryData.weapons,
         initialNarrative: mysteryData.initialNarrative,
       };
+
+      // Initialize procedural generation
+      const seed = generateSeed();
+      setGameSeed(seed);
+      const layout = generateManorLayout(seed, gameState.rooms);
+      setManorLayout(layout);
 
       const { data: newGame, error } = await supabase
         .from('games')
@@ -413,17 +419,20 @@ function App() {
     const nextIndex = (currentIndex + 1) % players.length;
     const nextPlayer = players[nextIndex];
 
+    if (!nextPlayer) return;
+
     setGame(prev => prev ? { ...prev, current_turn_player_id: nextPlayer.id } : null);
 
-    // If next player is AI, trigger AI turn
-    if (nextPlayer.is_ai) {
+    // If next player is AI, trigger AI turn (with safety check to prevent infinite loops)
+    const humanPlayers = players.filter(p => !p.is_ai);
+    if (nextPlayer.is_ai && humanPlayers.length > 0) {
       setTimeout(() => handleAITurn(nextPlayer), 2000);
     }
   };
 
   // Handle AI teammate's turn
   const handleAITurn = async (aiPlayer: Player) => {
-    if (!game) return;
+    if (!game || !aiPlayer) return;
 
     setIsProcessing(true);
 
@@ -446,24 +455,28 @@ function App() {
 
     // Simulate AI action processing
     setTimeout(async () => {
-      await supabase.from('chat_history').insert({
-        game_id: game.id,
-        message_type: 'ai_response',
-        content: `${aiPlayer.player_name} ${randomAction}s and ${aiRoll >= 10 ? 'finds something interesting' : 'doesn\'t find anything notable'}.`,
-      });
+      try {
+        await supabase.from('chat_history').insert({
+          game_id: game.id,
+          message_type: 'ai_response',
+          content: `${aiPlayer.player_name} ${randomAction}s and ${aiRoll >= 10 ? 'finds something interesting' : 'doesn\'t find anything notable'}.`,
+        });
 
-      const { data: updatedMessages } = await supabase
-        .from('chat_history')
-        .select('*')
-        .eq('game_id', game.id)
-        .order('created_at', { ascending: true });
+        const { data: updatedMessages } = await supabase
+          .from('chat_history')
+          .select('*')
+          .eq('game_id', game.id)
+          .order('created_at', { ascending: true });
 
-      if (updatedMessages) {
-        setChatHistory(updatedMessages as ChatMessage[]);
+        if (updatedMessages) {
+          setChatHistory(updatedMessages as ChatMessage[]);
+        }
+      } catch (error) {
+        console.error('Error in AI turn:', error);
+      } finally {
+        setIsProcessing(false);
+        rotateTurn();
       }
-
-      setIsProcessing(false);
-      rotateTurn();
     }, 1500);
   };
 
@@ -599,13 +612,20 @@ function App() {
     setRoomCode('');
     setCurrentPlayerId('');
     setIsHost(false);
+    // Reset procedural generation state
+    setGameSeed(0);
+    setManorLayout(null);
+    setShowMap(true);
+    // Reset story reel state
+    setStoryBeats([]);
+    setShowStoryReel(false);
   };
 
   const isMyTurn = game?.current_turn_player_id === currentPlayerId;
   const currentTurnPlayer = players.find(p => p.id === game?.current_turn_player_id);
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <main className="min-h-screen bg-slate-900" role="main">
       {phase === 'welcome' && (
         <WelcomeScreen
           onStartGame={() => setPhase('lobby')}
@@ -709,45 +729,53 @@ function App() {
 
       {/* D20 Dice Roll Modal */}
       {showDiceRoll && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="card-gothic p-8 text-center space-y-6">
-            <h2 className="text-2xl font-serif text-slate-100">Roll for Action</h2>
-            <p className="text-slate-400">"{pendingAction}"</p>
-            <D20Dice onRollComplete={handleDiceRollComplete} />
+        <Suspense fallback={<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"><div className="text-slate-300">Loading...</div></div>}>
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div className="card-gothic p-8 text-center space-y-6">
+              <h2 className="text-2xl font-serif text-slate-100">Roll for Action</h2>
+              <p className="text-slate-400">"{pendingAction}"</p>
+              <D20Dice onRollComplete={handleDiceRollComplete} />
+            </div>
           </div>
-        </div>
+        </Suspense>
       )}
 
       {showAccusation && game && (
-        <AccusationInterface
-          suspects={game.game_state.suspects}
-          rooms={game.game_state.rooms}
-          weapons={game.game_state.weapons}
-          onSubmitAccusation={handleAccusation}
-          onClose={() => setShowAccusation(false)}
-          isProcessing={isProcessing}
-        />
+        <Suspense fallback={<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"><div className="text-slate-300">Loading...</div></div>}>
+          <AccusationInterface
+            suspects={game.game_state.suspects}
+            rooms={game.game_state.rooms}
+            weapons={game.game_state.weapons}
+            onSubmitAccusation={handleAccusation}
+            onClose={() => setShowAccusation(false)}
+            isProcessing={isProcessing}
+          />
+        </Suspense>
       )}
 
       {phase === 'result' && accusationResult && (
-        <GameResult
-          isCorrect={accusationResult.isCorrect}
-          narrative={accusationResult.narrative}
-          onNewGame={handleNewGame}
-          onViewReel={handleViewReel}
-          isGeneratingReel={isGeneratingReel}
-        />
+        <Suspense fallback={<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"><div className="text-slate-300">Loading...</div></div>}>
+          <GameResult
+            isCorrect={accusationResult.isCorrect}
+            narrative={accusationResult.narrative}
+            onNewGame={handleNewGame}
+            onViewReel={handleViewReel}
+            isGeneratingReel={isGeneratingReel}
+          />
+        </Suspense>
       )}
 
       {showStoryReel && (
-        <StoryReel
-          beats={storyBeats}
-          onClose={() => {
-            setShowStoryReel(false);
-            setPhase('lobby');
-          }}
-          onReplay={() => setShowStoryReel(true)} // Replay doesn't need to regeneration
-        />
+        <Suspense fallback={<div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"><div className="text-slate-300">Loading...</div></div>}>
+          <StoryReel
+            beats={storyBeats}
+            onClose={() => {
+              setShowStoryReel(false);
+              setPhase('lobby');
+            }}
+            onReplay={() => setShowStoryReel(true)} // Replay doesn't need to regeneration
+          />
+        </Suspense>
       )}
 
       {/* Waiting Overlay when not your turn */}
@@ -760,7 +788,7 @@ function App() {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
 
