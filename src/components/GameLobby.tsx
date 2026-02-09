@@ -67,6 +67,7 @@ interface GameLobbyProps {
     isHost: boolean;
     currentPlayerId: string;
     onStartGame: () => void;
+    onBackToWelcome?: () => void;
 }
 
 export function GameLobby({
@@ -78,6 +79,7 @@ export function GameLobby({
     isHost,
     currentPlayerId,
     onStartGame,
+    onBackToWelcome,
 }: GameLobbyProps) {
     const [mode, setMode] = useState<'choice' | 'create' | 'join'>('choice');
     const [playerName, setPlayerName] = useState('');
@@ -98,6 +100,16 @@ export function GameLobby({
             <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
                 <div className="lobby-container">
                     <div className="card-gothic p-8 text-center space-y-6">
+                        {/* Back Button */}
+                        {onBackToWelcome && (
+                            <button
+                                onClick={onBackToWelcome}
+                                className="absolute top-4 left-4 text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-2"
+                                title="Return to welcome screen"
+                            >
+                                ← Back to Manor                            </button>
+                        )}
+
                         {/* Room Code Display */}
                         <div className="space-y-2">
                             <p className="text-slate-400 uppercase tracking-wider text-sm">Room Code</p>
@@ -133,13 +145,32 @@ export function GameLobby({
 
                         {/* Start Game Button (Host Only) */}
                         {isHost && (
-                            <button
-                                onClick={onStartGame}
-                                disabled={players.length < 2 || isLoading}
-                                className="btn-gothic w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isLoading ? 'Starting...' : `Start Investigation (${players.length} players)`}
-                            </button>
+                            <>
+                                <button
+                                    onClick={onStartGame}
+                                    disabled={players.length < 2 || isLoading}
+                                    className="btn-gothic w-full disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
+                                >
+                                    {isLoading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <span className="animate-spin inline-block w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full"></span>
+                                            Generating Mystery...
+                                        </span>
+                                    ) : (
+                                        `Start Investigation (${players.length} players)`
+                                    )}
+                                </button>
+                                {isLoading && (
+                                    <p className="text-slate-400 text-sm italic text-center animate-pulse">
+                                        This may take up to 30 seconds...
+                                    </p>
+                                )}
+                                {players.length < 2 && (
+                                    <p className="text-amber-400 text-sm text-center">
+                                        Need at least 2 players to start
+                                    </p>
+                                )}
+                            </>
                         )}
 
                         {!isHost && (
@@ -175,18 +206,23 @@ export function GameLobby({
                             <button
                                 onClick={() => setMode('create')}
                                 className="btn-gothic py-4"
+                                title="Host a new game and invite friends"
                             >
                                 <Crown className="w-5 h-5 inline mr-2" />
                                 Create New Game
                             </button>
+                            <p className="text-slate-500 text-xs px-4">Host a new mystery and share the room code with friends</p>
+                            
                             <button
                                 onClick={() => setMode('join')}
                                 className="px-6 py-4 bg-slate-700 hover:bg-slate-600 text-slate-100 
                          font-serif rounded-lg border border-slate-600 transition-all"
+                                title="Join a friend's game with a room code"
                             >
                                 <Users className="w-5 h-5 inline mr-2" />
                                 Join Existing Game
                             </button>
+                            <p className="text-slate-500 text-xs px-4">Enter a room code to join a friend's investigation</p>
                         </div>
                     </div>
                 </div>

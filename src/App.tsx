@@ -4,6 +4,7 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { GameLobby } from './components/GameLobby';
 import { InvestigationInterface } from './components/InvestigationInterface';
 import { EvidenceJournal } from './components/EvidenceJournal';
+import { HealthCheck } from './components/HealthCheck';
 import { Game, Evidence, ChatMessage, GameState, Player, DiceRoll, generateRoomCode, StoryBeat, StoryMood } from './types/game';
 import { generateManorLayout, generateSeed, ManorLayout } from './utils/procedural';
 import { Scale, Users, Dice6, Map } from 'lucide-react';
@@ -52,6 +53,9 @@ function App() {
   const [showStoryReel, setShowStoryReel] = useState(false);
   const [isGeneratingReel, setIsGeneratingReel] = useState(false);
   const [storyBeats, setStoryBeats] = useState<StoryBeat[]>([]);
+
+  // Health Check state
+  const [showHealthCheck, setShowHealthCheck] = useState(false);
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
@@ -150,19 +154,36 @@ function App() {
   // Start the game (host only)
   const handleStartGame = async () => {
     setIsLoading(true);
+    const timeoutDuration = 30000; // 30 second timeout
+    
     try {
+      // Create abort controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
+
       const response = await fetch(`${supabaseUrl}/functions/v1/generate-mystery`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-      });
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId));
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Mystery generation failed:', errorText);
-        throw new Error(`Failed to generate mystery: ${response.status}`);
+        
+        // Provide user-friendly error messages
+        let userMessage = 'Failed to generate mystery. ';
+        if (response.status === 500) {
+          userMessage += 'Server error occurred. Please check that the Mistral API key is configured correctly.';
+        } else if (response.status === 401 || response.status === 403) {
+          userMessage += 'Authentication failed. Please check your Supabase credentials.';
+        } else {
+          userMessage += `Error ${response.status}. Please try again.`;
+        }
+        throw new Error(userMessage);
       }
 
       const rawMysteryData = await response.json();
@@ -220,9 +241,17 @@ function App() {
       }
 
       setPhase('playing');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting game:', error);
-      alert('Failed to start game. Please try again.');
+      
+      // Handle different error types
+      if (error.name === 'AbortError') {
+        alert('Request timed out. The server may be slow or unavailable. Please try again.');
+      } else if (error.message.includes('Failed to fetch')) {
+        alert('Network error: Unable to reach the server. Please check your internet connection and ensure the Supabase URL is correct.');
+      } else {
+        alert(error.message || 'Failed to start game. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -621,6 +650,15 @@ function App() {
     setShowStoryReel(false);
   };
 
+  const handleBackToWelcome = () => {
+    // Reset lobby state and return to welcome
+    setPhase('welcome');
+    setPlayers([]);
+    setRoomCode('');
+    setCurrentPlayerId('');
+    setIsHost(false);
+  };
+
   const isMyTurn = game?.current_turn_player_id === currentPlayerId;
   const currentTurnPlayer = players.find(p => p.id === game?.current_turn_player_id);
 
@@ -630,6 +668,7 @@ function App() {
         <WelcomeScreen
           onStartGame={() => setPhase('lobby')}
           isLoading={isLoading}
+          onShowHealthCheck={() => setShowHealthCheck(true)}
         />
       )}
 
@@ -643,6 +682,7 @@ function App() {
           isHost={isHost}
           currentPlayerId={currentPlayerId}
           onStartGame={handleStartGame}
+          onBackToWelcome={handleBackToWelcome}
         />
       )}
 
@@ -787,6 +827,11 @@ function App() {
             </p>
           </div>
         </div>
+      )}
+
+      {/* Health Check Diagnostic Tool */}
+      {showHealthCheck && (
+        <HealthCheck onClose={() => setShowHealthCheck(false)} />
       )}
     </main>
   );

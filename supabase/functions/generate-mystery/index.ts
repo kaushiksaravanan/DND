@@ -39,8 +39,11 @@ Deno.serve(async (req: Request) => {
     const mistralApiKey = Deno.env.get("MISTRAL_API_KEY");
 
     if (!mistralApiKey) {
-      throw new Error("MISTRAL_API_KEY not configured");
+      console.error("MISTRAL_API_KEY not configured in Supabase secrets");
+      throw new Error("MISTRAL_API_KEY not configured. Please set it using: supabase secrets set MISTRAL_API_KEY=your_key");
     }
+
+    console.log("Generating mystery with Mistral AI...");
 
     const prompt = `You are a master mystery writer creating a unique murder mystery for "Echo Manor Mysteries" - a Victorian gothic detective game.
 
@@ -96,22 +99,28 @@ Requirements:
 
     if (!mistralResponse.ok) {
       const errorText = await mistralResponse.text();
+      console.error("Mistral API error:", errorText);
       throw new Error(`Mistral API error: ${mistralResponse.status} - ${errorText}`);
     }
+
+    console.log("Mistral API response received successfully");
 
     const mistralData = await mistralResponse.json();
     const content = mistralData.choices[0]?.message?.content;
 
     if (!content) {
+      console.error("No content in Mistral response:", JSON.stringify(mistralData));
       throw new Error("No content received from Mistral API");
     }
 
+    console.log("Parsing mystery data...");
     let mysterySetup: MysterySetup;
     try {
       const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       mysterySetup = JSON.parse(cleanedContent);
+      console.log("Mystery generated successfully:", mysterySetup.suspects?.length || 0, "suspects");
     } catch (parseError) {
-      console.error("Failed to parse Mistral response:", content);
+      console.error("Failed to parse Mistral response:", content.substring(0, 200));
       throw new Error(`Failed to parse mystery setup: ${parseError.message}`);
     }
 
@@ -123,13 +132,30 @@ Requirements:
     });
   } catch (error) {
     console.error("Error generating mystery:", error);
+    
+    // Provide more specific error messages
+    let errorMessage = error.message || "Failed to generate mystery";
+    let statusCode = 500;
+    
+    if (error.message?.includes("MISTRAL_API_KEY")) {
+      statusCode = 500;
+      errorMessage = "Server configuration error: Mistral API key not set. Please contact administrator.";
+    } else if (error.message?.includes("Mistral API error")) {
+      statusCode = 502;
+      errorMessage = "AI service error: " + error.message;
+    } else if (error.message?.includes("Failed to parse")) {
+      statusCode = 500;
+      errorMessage = "AI response parsing error: " + error.message;
+    }
+    
     return new Response(
       JSON.stringify({
-        error: error.message || "Failed to generate mystery",
-        details: error.toString()
+        error: errorMessage,
+        details: error.toString(),
+        timestamp: new Date().toISOString()
       }),
       {
-        status: 500,
+        status: statusCode,
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json",
