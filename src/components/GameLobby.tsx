@@ -98,13 +98,16 @@ export function GameLobby({
     if (roomCode) {
         return (
             <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-                <div className="lobby-container">
-                    <div className="card-gothic p-8 text-center space-y-6">
+                {/* Fog overlay */}
+                <div className="fog-overlay" />
+
+                <div className="lobby-container relative z-10">
+                    <div className="card-gothic p-8 text-center space-y-6 relative">
                         {/* Back Button */}
                         {onBackToWelcome && (
                             <button
                                 onClick={onBackToWelcome}
-                                className="absolute top-4 left-4 text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-2"
+                                className="absolute top-4 left-4 text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-2 z-10"
                                 title="Return to welcome screen"
                             >
                                 ← Back to Manor                            </button>
@@ -257,8 +260,9 @@ export function GameLobby({
                                 onChange={(e) => setPlayerName(e.target.value)}
                                 placeholder="Enter your detective name..."
                                 className="input-gothic w-full"
-                                maxLength={20}
+                                maxLength={30}
                             />
+                            <p className="text-slate-500 text-xs mt-1">{playerName.length}/30 characters</p>
                         </div>
 
                         {mode === 'join' && (

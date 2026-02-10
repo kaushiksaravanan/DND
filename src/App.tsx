@@ -126,18 +126,46 @@ function App() {
   const handleJoinGame = async (code: string, playerName: string) => {
     setIsLoading(true);
     try {
+      // Validate room code format (6 uppercase alphanumeric characters)
+      if (!/^[A-Z0-9]{6}$/.test(code)) {
+        alert('Invalid room code format. Please enter a valid 6-character code.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if the game exists in Supabase
+      const { data: existingGame, error: fetchError } = await supabase
+        .from('games')
+        .select('*')
+        .eq('room_code', code)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error('Error checking room code:', fetchError);
+        alert('Error connecting to server. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!existingGame) {
+        alert('Room code not found. Please check the code and try again.');
+        setIsLoading(false);
+        return;
+      }
+
       const playerId = crypto.randomUUID();
 
       const newPlayer: Player = {
         id: playerId,
-        game_id: '',
+        game_id: existingGame.id,
         player_name: playerName,
         is_ai: false,
         is_host: false,
         joined_at: new Date().toISOString(),
       };
 
-      // For demo purposes, simulate joining (in real implementation, this would fetch from Supabase)
+      // For demo purposes, simulate joining (in real implementation, this would sync with Supabase realtime)
       setCurrentPlayerId(playerId);
       setIsHost(false);
       setRoomCode(code);
